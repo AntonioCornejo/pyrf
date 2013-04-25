@@ -160,7 +160,6 @@ class WSA4000(object):
             gain = self.scpiget("INPUT:GAIN:RF?")
         else:
             self.scpiset(":INPUT:GAIN:RF %s\n" % gain)
-
         return gain.lower()
 
 
@@ -388,7 +387,6 @@ class WSA4000(object):
         self.scpiset(":sweep:entry:trigger:level %d, %d, %d" % (entry.level_fstart, entry.level_fstop, entry.level_amplitude))
         self.scpiset(":sweep:entry:save")
 
-
     def sweep_read(self, index):
         """
         Read an entry from the sweep list.
@@ -439,7 +437,46 @@ class WSA4000(object):
 
         return ent
 
+    def sweep_count(self):
+        """
+        Gets number of sweep entries.
 
+        :returns: Number of sweep entries in list
+        :rtype: pyrf.config.SweepEntry
+        """
+        count = self.scpiget(":sweep:entry:count?")
+        return int(count)
+
+    def sweep_status(self):
+        """
+        Gets current sweep status.
+
+        :returns: Current status value (RUNNING | STOPPED)
+        :rtype: pyrf.config.SweepEntry
+        """
+        status = self.scpiget(":sweep:list:status?")
+        return status
+        
+    def sweep_center_freq(self):
+        """
+        Gets the center frequencies of a sweep entry.
+
+        :returns: List of center frequencies
+        :rtype: pyrf.config.SweepEntry
+        """
+        centerFreq = self.scpiget(":sweep:entry:freq:center?")
+        return centerFreq
+
+    def sweep_default_entry(self):
+        """
+        Read default sweep entry values.
+
+        :returns: sweep entry
+        :rtype: pyrf.config.SweepEntry
+        """
+        ent = SweepEntry()
+        return ent	
+	
     def sweep_clear(self):
         """
         Remove all entries from the sweep list.
@@ -463,11 +500,14 @@ class WSA4000(object):
         """
         self.scpiset(":sweep:list:stop")
 
-
     def flush_captures(self):
         """
         Flush capture memory of sweep captures.
         """
         self.scpiset(":sweep:flush")
 
-
+    def system_flush(self):
+        """
+        Flush system capture memory.
+        """
+        self.scpiset(":system:flush")

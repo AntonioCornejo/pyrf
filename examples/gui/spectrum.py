@@ -17,12 +17,15 @@ class SpectrumView(QtGui.QWidget):
     A complete spectrum view with left/bottom axis and plot
     """
 
-    def __init__(self, powdata, center_freq, decimation_factor):
+
+    def __init__(self, powdata, center_freq, span, decimation_factor):
         super(SpectrumView, self).__init__()
-        self.plot = SpectrumViewPlot(powdata, center_freq, decimation_factor)
+
+        self.plot = SpectrumViewPlot(powdata, center_freq, span, decimation_factor)
         self.left = SpectrumViewLeftAxis()
         self.bottom = SpectrumViewBottomAxis()
-        self.bottom.update_params(center_freq, decimation_factor)
+
+        self.bottom.update_params(center_freq, span, decimation_factor)
         self.initUI()
 
     def initUI(self):
@@ -39,12 +42,16 @@ class SpectrumView(QtGui.QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         self.setLayout(grid)
 
-    def update_data(self, powdata, center_freq, decimation_factor):
-        if (self.plot.center_freq, self.plot.decimation_factor) != (
-                center_freq, decimation_factor):
-            self.bottom.update_params(center_freq, decimation_factor)
-        self.plot.update_data(powdata, center_freq, decimation_factor)
 
+    def update_data(self, powdata, center_freq, span, decimation_factor):
+
+        if (self.plot.center_freq, self.plot.span, self.plot.decimation_factor) != (
+
+                center_freq, span, decimation_factor):
+
+            self.bottom.update_params(center_freq, span, decimation_factor)
+
+        self.plot.update_data(powdata, center_freq, span, decimation_factor)
 
 def dBm_labels(height):
     """
@@ -89,24 +96,31 @@ class SpectrumViewLeftAxis(QtGui.QWidget):
                 QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter,
                 txt)
 
-def MHz_labels(width, center_freq, decimation_factor):
+
+def MHz_labels(width, center_freq, span, decimation_factor):
     """
     return a list of (position, label_text) tuples where position
     is a value between 0 (left) and width (right).
     """
     df = float(decimation_factor)
     # simple, fixed implementation for now
-    offsets = (-50, -25, 0, 25, 50)
+
+    offsets = (-2*(span/5), -(span/5), 0, (span/5), 2*(span/5))
+
     freq_labels = [str(center_freq / 1e6 + d/df) for d in offsets]
-    x_values = [(d + 62.5) * width / 125 for d in offsets]
+
+
+    x_values = [(d + span/2) * width / span for d in offsets]
     return zip(x_values, freq_labels)
 
 class SpectrumViewBottomAxis(QtGui.QWidget):
     """
     The bottom axis of a spectrum view showing frequencies
     """
-    def update_params(self, center_freq, decimation_factor):
+
+    def update_params(self, center_freq, span, decimation_factor):
         self.center_freq = center_freq
+        self.span = span
         self.decimation_factor = decimation_factor
         self.update()
 
@@ -130,6 +144,7 @@ class SpectrumViewBottomAxis(QtGui.QWidget):
         for x, txt in MHz_labels(
                 width - RIGHT_MARGIN,
                 self.center_freq,
+                self.span,
                 self.decimation_factor):
             qp.drawText(
                 x - 40,
@@ -139,21 +154,23 @@ class SpectrumViewBottomAxis(QtGui.QWidget):
                 QtCore.Qt.AlignTop | QtCore.Qt.AlignHCenter,
                 txt)
 
-
-
 class SpectrumViewPlot(QtGui.QWidget):
     """
     The data plot of a spectrum view
     """
-    def __init__(self, powdata, center_freq, decimation_factor):
+
+    def __init__(self, powdata, center_freq, span, decimation_factor):
         super(SpectrumViewPlot, self).__init__()
         self.powdata = powdata
         self.center_freq = center_freq
+        self.span = span
         self.decimation_factor = decimation_factor
 
-    def update_data(self, powdata, center_freq, decimation_factor):
+
+    def update_data(self, powdata, center_freq, span, decimation_factor):
         self.powdata = powdata
         self.center_freq = center_freq
+        self.span = span
         self.decimation_factor = decimation_factor
         self.update()
 
@@ -179,6 +196,7 @@ class SpectrumViewPlot(QtGui.QWidget):
         for x, txt in MHz_labels(
                 width - RIGHT_MARGIN,
                 self.center_freq,
+                self.span,
                 self.decimation_factor):
             qp.drawLine(
                 x,
@@ -188,14 +206,15 @@ class SpectrumViewPlot(QtGui.QWidget):
 
         qp.setPen(QtCore.Qt.green)
 
-        y_values = height - 1 - (self.powdata - DBM_BOTTOM) * (
-            float(height - TOP_MARGIN) / (DBM_TOP - DBM_BOTTOM))
-        x_values = numpy.linspace(0, width - 1 - RIGHT_MARGIN,
-            len(self.powdata))
+        if (self.powdata != []):
+            y_values = height - 1 - (self.powdata - DBM_BOTTOM) * (
+                float(height - TOP_MARGIN) / (DBM_TOP - DBM_BOTTOM))
+            x_values = numpy.linspace(0, width - 1 - RIGHT_MARGIN,
+                len(self.powdata))
 
-        path = QtGui.QPainterPath()
-        points = itertools.izip(x_values, y_values)
-        path.moveTo(*next(points))
-        for x,y in points:
-            path.lineTo(x, y)
-        qp.drawPath(path)
+            path = QtGui.QPainterPath()
+            points = itertools.izip(x_values, y_values)
+            path.moveTo(*next(points))
+            for x,y in points:
+                path.lineTo(x, y)
+            qp.drawPath(path)

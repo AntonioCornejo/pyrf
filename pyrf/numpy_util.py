@@ -74,7 +74,22 @@ def compute_dBm(fft_result, reflevel_pkt, adc_dynamic_range):
     noise_level_offset = reference_level - FFT_BASELINE - adc_dynamic_range
     fft_result = 20 * numpy.log10(numpy.abs(fft_result)) + noise_level_offset
     return fft_result
-    
+
+def compute_fft_i_only(dut, data_pkt, reflevel_pkt):
+    import numpy
+
+    reference_level = reflevel_pkt.fields['reflevel']
+
+    i_data, q_data = get_iq_data(data_pkt)
+    i_removed_dc_offset = i_data - numpy.mean(i_data)
+    windowed_i = i_removed_dc_offset * numpy.hanning(len(i_data))
+
+    noise_level_offset = reference_level - FFT_BASELINE - dut.ADC_DYNAMIC_RANGE
+    fft_result = numpy.fft.fftshift(numpy.fft.fft(windowed_i))
+    fft_result = 20 * numpy.log10(numpy.abs(fft_result)) + noise_level_offset
+
+    return fft_result
+
 def _compute_fft(i_data, q_data, reference_level, adc_dynamic_range):
     import numpy
 
@@ -90,7 +105,6 @@ def _compute_fft(i_data, q_data, reference_level, adc_dynamic_range):
     fft_result = 20 * numpy.log10(numpy.abs(fft_result)) + noise_level_offset
 
     return fft_result
-
 
 def _calibrate_i_q(i_data, q_data):
     samples = len(i_data)

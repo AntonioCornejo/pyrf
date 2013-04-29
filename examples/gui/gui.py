@@ -19,7 +19,7 @@ from util import frequency_text
 
 from pyrf.devices.thinkrf import WSA4000
 from pyrf.util import read_data_and_reflevel, read_data_and_reflevel_sweep 
-from pyrf.numpy_util import compute_fft, compute_avg_fft, get_iq_data, compute_fft_noLog, compute_dBm
+from pyrf.numpy_util import compute_fft, compute_avg_fft, get_iq_data, compute_fft_noLog, compute_dBm, compute_fft_i_only
 from numpy import concatenate, amax, mean
 import numpy
 import time
@@ -29,7 +29,12 @@ DEVICE_FULL_SPAN = 125e6
 REFRESH_CHARTS = 0.05
 FULLBAND = 100
 HALFBAND = 45
+LOWEST_FREQ = 0
 MIN_START_FREQ = 40
+THRESHOLD_FREQ = 40
+MIN_TUNABLE_FREQ = 90
+MIN_SWEEP_45 = 45
+MIN_SWEEP_100 = 40
 MIN_SPAN = 10
 MAX_SPAN = 9900
 START_SWEEP = 2000
@@ -118,6 +123,7 @@ class MainPanel(QtGui.QWidget):
         self.stopFrqSweep = START_SWEEP + FULLBAND
         self.avgType = "Pwr Avg"
         self.suspendView = False
+        self.lowerBand = False
         data, reflevel = read_data_and_reflevel(dut)
         self.screen = SpectrumView(
             compute_fft(dut, data, reflevel),
@@ -471,29 +477,53 @@ class MainPanel(QtGui.QWidget):
                 self.spanLine.setText("%0.1f" % self.span)
                 self.cfLine.setText("%0.1f" % self.centerFrq)
         def correct_freq():
-            if (self.startFrq < MIN_START_FREQ):
-                self.startFrq = MIN_START_FREQ
+            if (self.startFrq < MIN_SWEEP_100):
+                self.startFrq = LOWEST_FREQ
                 freq.setText("%0.1f" % self.startFrq)
-                self.popup_window = PopupWindow("Start frequency cannot be less than 45 MHz.")
-                self.stopFrq = self.startFrq + MIN_SPAN
-                self.span = MIN_SPAN
+                self.stopFrq = MIN_SWEEP_100
+                self.span = self.stopFrq - self.startFrq
                 self.centerFrq = self.startFrq + self.span/2
                 display_freq()
-            if (self.stopFrq <= self.startFrq):
+                self.popup_window = PopupWindow("Lowest band frequencies.")
+
+            if (self.stopFrq < self.startFrq):
                 self.stopFrq = self.startFrq + MIN_SPAN
                 freq.setText("%0.1f" % self.stopFrq)
-                self.span = MIN_SPAN
-                self.centerFrq = self.startFrq + self.span/2                
-                display_freq()                
+                self.span = self.stopFrq - self.startFrq
+                self.centerFrq = self.startFrq + self.span/2
+                display_freq()
                 self.popup_window = PopupWindow("Stop frequency cannot be lower than start frequency.")
             if (self.span > MAX_SPAN):
                 self.span = MIN_START_FREQ
-                freq.setText("%0.1f" % self.span)
-                self.popup_window = PopupWindow("Span cannot exceed 9.9 GHz.")	
-            if (self.centerFrq < MIN_START_FREQ + MIN_SPAN/2):
-                self.centerFrq = MIN_START_FREQ + MIN_SPAN/2
-                freq.setText("%0.1f" % self.centerFrq)		
-                self.popup_window = PopupWindow("Center frequency cannot be less than 110 MHz.")
+                self.popup_window = PopupWindow("Span cannot exceed 9.9 GHz.")   
+            elif (self.span == 0):
+                if (self.stopFrq == MIN_SWEEP_100):
+                    self.startFrq = LOWEST_FREQ
+                    self.stopFrq = MIN_SWEEP_100
+                    self.span = self.stopFrq - self.startFrq
+                    self.centerFrq = self.startFrq + self.span/2
+                else:
+                    self.stopFrq = self.startFrq + MIN_SPAN
+                    self.span = self.stopFrq - self.startFrq
+                    self.centerFrq = self.startFrq + self.span/2
+                    self.popup_window = PopupWindow("Stop frequency cannot equal to start frequency.")
+            freq.setText("%0.1f" % self.span)
+            display_freq()
+            if (self.centerFrq >= MIN_SWEEP_100) and (self.centerFrq < MIN_TUNABLE_FREQ):
+                self.popup_window = PopupWindow("Center frequency cannot be between 40 and 90 MHz.")
+                self.startFrq = MIN_SWEEP_100
+                self.stopFrq = self.startFrq + 100
+                self.span = self.stopFrq - self.startFrq
+                self.centerFrq = self.startFrq + self.span/2
+                freq.setText("%0.1f" % self.centerFrq)
+                display_freq()                    
+            elif (self.centerFrq < MIN_SWEEP_100):
+                self.startFrq = LOWEST_FREQ
+                self.stopFrq = MIN_SWEEP_100
+                self.span = self.stopFrq - self.startFrq
+                self.centerFrq = self.startFrq + self.span/2
+                freq.setText("%0.1f" % self.centerFrq)
+                display_freq()
         def correct_rbw():
             if (self.span*1e6 >= 1e9):
                 if (self.points > 1024):
@@ -609,18 +639,27 @@ class MainPanel(QtGui.QWidget):
                     self.dut,
                     self.points
                     )
-            # Average data from N packets:
-            if ((self.vbw_changed == True) and (self.count == 0)):
-                self.vbw_changed = False
-                self.pkts = self.packets
-            arrayData = self.average_fft(data, reflevel)
-            if (arrayData != []):
-                spanData = self.select_samples_trace(arrayData, self.band)
+            if (self.centerFrq < MIN_SWEEP_100):
+                arrayData = compute_fft_i_only(self.dut, data, reflevel)
+                spanData = self.select_samples_low_band(arrayData)
                 self.screen.update_data(
                     spanData,
                     self.centerFrq*1e6,
                     self.span,
                     self.decimation_factor)
+            else:
+                # Average data from N packets:
+                if ((self.vbw_changed == True) and (self.count == 0)):
+                    self.vbw_changed = False
+                    self.pkts = self.packets
+                arrayData = self.average_fft(data, reflevel)
+                if (arrayData != []):
+                    spanData = self.select_samples_trace(arrayData, self.band)
+                    self.screen.update_data(
+                        spanData,
+                        self.centerFrq*1e6,
+                        self.span,
+                        self.decimation_factor)
         else:
             while (reflevel == None):
                 data, reflevel, start, stop, rem, stid = read_data_and_reflevel_sweep(
@@ -739,6 +778,17 @@ class MainPanel(QtGui.QWidget):
             else:
                 # For other groups, select lower half of step bandwidth
                 data = data[firstIndex-1:halfIndex-1]
+        return data
+
+    def select_samples_low_band(self, data):
+        N = len(data)     # Get array length (number of samples in data array)
+        halfIndex = int(N/2)   # Get half array index
+        # Calculate ratio of span against maximum bandwidth
+        ratio = self.span*1e6/(DEVICE_FULL_SPAN/2)
+        # Calculate indexes of passband frequencies
+        lastIndex = int(N * (1 - (1 - ratio)/2))		
+        # Remove stopband frequencies
+        data = data[halfIndex:lastIndex]
         return data
 
     def get_max(self, data, slice):

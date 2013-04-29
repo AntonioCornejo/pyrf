@@ -95,7 +95,7 @@ class SpectrumViewLeftAxis(QtGui.QWidget):
                 20,
                 QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter,
                 txt)
-
+        qp.drawText(10, 170, "dBm")
 
 def MHz_labels(width, center_freq, span, decimation_factor):
     """
@@ -153,7 +153,8 @@ class SpectrumViewBottomAxis(QtGui.QWidget):
                 BOTTOM_AXIS_HEIGHT - 10,
                 QtCore.Qt.AlignTop | QtCore.Qt.AlignHCenter,
                 txt)
-
+        qp.drawText(200, 30, "MHz")
+        
 class SpectrumViewPlot(QtGui.QWidget):
     """
     The data plot of a spectrum view

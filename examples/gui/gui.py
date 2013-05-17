@@ -27,8 +27,8 @@ import math
 
 DEVICE_FULL_SPAN = 125e6
 REFRESH_CHARTS = 0.05
-FULLBAND = 100
-HALFBAND = 45
+FULLBAND = 100.0
+HALFBAND = 45.0
 LOWEST_FREQ = 0
 HIGHEST_FREQ = 10000
 MIN_TUNABLE_FREQ = 90
@@ -126,66 +126,73 @@ class MainPanel(QtGui.QWidget):
         self.savedFullSpan = FULLBAND
         self.savedHalfSpan = HALFBAND
         self.savedFullStartFrq = DEFAULT_FREQ - FULLBAND/2
-        self.savedHalfStartFrq = DEFAULT_FREQ - HALFBAND/2
+        self.savedHalfStartFrq = DEFAULT_FREQ - float(HALFBAND/2)
         self.savedFullStopFrq = DEFAULT_FREQ + FULLBAND/2
-        self.savedHalfStopFrq = DEFAULT_FREQ + HALFBAND/2
+        self.savedHalfStopFrq = DEFAULT_FREQ + float(HALFBAND/2)
+        self.peakFindActive = False
         data, reflevel = read_data_and_reflevel(dut)
         self.screen = SpectrumView(
             compute_fft(dut, data, reflevel),
             self.center_freq,
             DEVICE_FULL_SPAN/1e6,
-            self.decimation_factor)
+            self.decimation_factor,
+            False)
         self.initUI()
 
     def initUI(self):
         grid = QtGui.QGridLayout()
         grid.setSpacing(8)
         grid.addWidget(self.screen, 0, 0, 14, 1)
-        grid.setColumnMinimumWidth(0, 500)
+        grid.setColumnMinimumWidth(0, 550)
 
         y = 0
-        grid.addWidget(self._radio_title(), y, 1, 1, 4)
+        grid.addWidget(self._radio_title(), y, 1, 1, 3)
         y += 1
         grid.addWidget(self._antenna_control(), y, 1, 1, 1)
+        grid.addWidget(self._peak_find_control(), y, 2, 1, 1)
         grid.addWidget(self._bpf_control(), y, 3, 1, 2)
         y += 1
         grid.addWidget(self._gain_control(), y, 1, 1, 1)
-        grid.addWidget(QtGui.QLabel('IF Gain:'), y, 3, 1, 1)
-        grid.addWidget(self._ifgain_control(), y, 4, 1, 1)
+        grid.addWidget(QtGui.QLabel('                          IF Gain:'), y, 2, 1, 1)
+        grid.addWidget(self._ifgain_control(), y, 3, 1, 1)
         y += 1
-        grid.addWidget(self._frequency_title(), y, 1, 1, 4)
+        grid.addWidget(self._frequency_title(), y, 1, 1, 3)
         y += 1
         # Span control
         grid.addWidget(self._span_control(), y, 1, 1, 1)
         self.spanLine = QtGui.QLineEdit("100.0")
+        self.spanLine.setStyleSheet('QLineEdit {max-width: 9em}')
         self.span = float(self.spanLine.text())
         spanLine, steps, freq_plus, freq_minus = self._freq_controls(self.spanLine)
-        grid.addWidget(self.spanLine, y, 2, 1, 2)
-        grid.addWidget(QtGui.QLabel('MHz'), y, 4, 1, 1)
+        grid.addWidget(self.spanLine, y, 2, 1, 1)
+        grid.addWidget(QtGui.QLabel('MHz'), y, 3, 1, 1)
         self.span_y = y
         y += 1
         # Center frequency control
         grid.addWidget(self._centerFreq_control(), y, 1, 1, 1)
         self.cfLine = QtGui.QLineEdit("2400.0")
+        self.cfLine.setStyleSheet('QLineEdit {max-width: 9em}')
         self.centerFrq = float(self.cfLine.text())
-        grid.addWidget(self.cfLine, y, 2, 1, 2)
-        grid.addWidget(QtGui.QLabel('MHz'), y, 4, 1, 1)
+        grid.addWidget(self.cfLine, y, 2, 1, 1)
+        grid.addWidget(QtGui.QLabel('MHz'), y, 3, 1, 1)
         self.cf_y = y		
         y += 1
         # Start frequency control
         grid.addWidget(self._startFreq_control(), y, 1, 1, 1)
         self.startFrqLine = QtGui.QLineEdit("2350.0")
+        self.startFrqLine.setStyleSheet('QLineEdit {max-width: 6em}')
         self.startFrq = float(self.startFrqLine.text())
-        grid.addWidget(self.startFrqLine, y, 2, 1, 2)
-        grid.addWidget(QtGui.QLabel('MHz'), y, 4, 1, 1)
+        grid.addWidget(self.startFrqLine, y, 2, 1, 1)
+        grid.addWidget(QtGui.QLabel('MHz'), y, 3, 1, 1)
         self.start_y = y
         y += 1
         # Stop frequency control
         grid.addWidget(self._stopFreq_control(), y, 1, 1, 1)
         self.stopFrqLine = QtGui.QLineEdit("2450.0")
+        self.stopFrqLine.setStyleSheet('QLineEdit {max-width: 9em}')
         self.stopFrq = float(self.stopFrqLine.text())
-        grid.addWidget(self.stopFrqLine, y, 2, 1, 2)
-        grid.addWidget(QtGui.QLabel('MHz'), y, 4, 1, 1)
+        grid.addWidget(self.stopFrqLine, y, 2, 1, 1)
+        grid.addWidget(QtGui.QLabel('MHz'), y, 3, 1, 1)
         self.stop_y = y		
         y += 1
         # Band selection control
@@ -201,12 +208,12 @@ class MainPanel(QtGui.QWidget):
         grid.addWidget(self._avg_control(), y, 2, 1, 1)
         self.vbw_y = y
         y += 1
-        grid.addWidget(self._frequency_adjust_title(), y, 1, 1, 4)
+        grid.addWidget(self._frequency_adjust_title(), y, 1, 1, 3)
         y += 1
         self.adj_y = y
-        grid.addWidget(steps, y, 2, 1, 2)
+        grid.addWidget(steps, y, 2, 1, 1)
         grid.addWidget(freq_minus, y, 1, 1, 1)
-        grid.addWidget(freq_plus, y, 4, 1, 1)
+        grid.addWidget(freq_plus, y, 3, 1, 1)
 
         self.setLayout(grid)
         self.grid = grid
@@ -221,13 +228,14 @@ class MainPanel(QtGui.QWidget):
         self.update_screen()
 
     def _radio_title(self):
-        s = "───────────── RADIO SETTINGS ─────────────"
+        s = "────────────── RADIO SETTINGS ──────────────"
         s_html = "<font color=black size=3> {} </font>".format(s)
         label = QtGui.QLabel(s_html)
         return label
 
     def _antenna_control(self):
         antenna = QtGui.QComboBox(self)
+        antenna.setStyleSheet('QComboBox {max-width: 9em}')
         antenna.addItem("Antenna 1")
         antenna.addItem("Antenna 2")
         antenna.setCurrentIndex(self.dut.antenna() - 1)
@@ -242,8 +250,23 @@ class MainPanel(QtGui.QWidget):
         antenna.currentIndexChanged.connect(new_antenna)
         return antenna
 
+    def _peak_find_control(self):
+        peakButton = QtGui.QPushButton('Peak Find')
+        peakButton.clicked.connect(self.peakFindButtonClicked)
+        self.peakButton = peakButton
+        return peakButton
+
+    def peakFindButtonClicked(self):
+        if (self.peakFindActive == False):
+            self.peakFindActive = True
+            self.peakButton.setStyleSheet('QPushButton {background-color: #FF3333 ; border-style: outset; border-width: 2px; border-radius: 4px; max-width: 9em; padding: 3px;}')
+        else:
+            self.peakFindActive = False
+            self.peakButton.setStyleSheet('QPushButton')
+
     def _bpf_control(self):
         bpf = QtGui.QComboBox(self)
+        bpf.setStyleSheet('QComboBox {max-width: 10em}')
         bpf.addItem("BPF On")
         bpf.addItem("BPF Off")
         bpf.setCurrentIndex(0 if self.dut.preselect_filter() else 1)
@@ -260,6 +283,7 @@ class MainPanel(QtGui.QWidget):
 
     def _gain_control(self):
         gain = QtGui.QComboBox(self)
+        gain.setStyleSheet('QComboBox {max-width: 9em}')
         gain_values = ['High', 'Med', 'Low', 'VLow']
         for g in gain_values:
             gain.addItem("RF Gain: %s" % g)
@@ -279,6 +303,7 @@ class MainPanel(QtGui.QWidget):
 
     def _ifgain_control(self):
         ifgain = QtGui.QSpinBox(self)
+        ifgain.setStyleSheet('QSpinBox {max-width: 6em}')
         ifgain.setRange(-10, 34)
         ifgain.setSuffix(" dB")
         ifgain.setValue(int(self.dut.ifgain()))
@@ -294,60 +319,87 @@ class MainPanel(QtGui.QWidget):
         return ifgain
 
     def _frequency_title(self):
-        s = "─────────── FREQUENCY SETTINGS ───────────"
+        s = "───────────── FREQUENCY SETTINGS ─────────────"
         s_html = "<font color=black size=3> {} </font>".format(s)
         label = QtGui.QLabel(s_html)
         return label
 
+    def setButtonColor(self, button):
+        button.setStyleSheet('QPushButton {background-color: #33CCFF ; border-style: outset; border-width: 2px; border-radius: 4px; max-width: 9em; padding: 3px;}')
+
+    def setOriginalButtons(self):
+        self.spanButton.setStyleSheet('QPushButton {max-width: 9em}')
+        self.cFreqButton.setStyleSheet('QPushButton {max-width: 9em}')
+        self.startFreqButton.setStyleSheet('QPushButton {max-width: 9em}')
+        self.stopFreqButton.setStyleSheet('QPushButton {max-width: 9em}')
+
     def _span_control(self):
         spanButton = QtGui.QPushButton('Span')
+        spanButton.setStyleSheet('QPushButton {max-width: 9em}')
         spanButton.clicked.connect(self.spanButtonClicked)
         self.spanButton = spanButton
         return spanButton
-   
+        
     def spanButtonClicked(self):
+        self.setOriginalButtons()
+        sender = self.sender()
+        self.setButtonColor(sender)
         self.spanLine, steps, freq_plus, freq_minus = self._freq_controls(self.spanLine)
-        self.grid.addWidget(self.spanLine, self.span_y, 2, 1, 2)
-        self.grid.addWidget(steps, self.adj_y, 2, 1, 2)
+        self.grid.addWidget(self.spanLine, self.span_y, 2, 1, 1)
+        self.grid.addWidget(steps, self.adj_y, 2, 1, 1)
         self.grid.addWidget(freq_minus, self.adj_y, 1, 1, 1)
-        self.grid.addWidget(freq_plus, self.adj_y, 4, 1, 1)
-		
+        self.grid.addWidget(freq_plus, self.adj_y, 3, 1, 1)
+
     def _centerFreq_control(self):
         cFreqButton = QtGui.QPushButton('Center Freq')
+        cFreqButton.setStyleSheet('QPushButton {max-width: 9em}')
         self.cFreqButton = cFreqButton
         cFreqButton.clicked.connect(self.cfButtonClicked)
         return cFreqButton	
 
     def cfButtonClicked(self):
+        self.setOriginalButtons()
+        sender = self.sender()
+        self.setButtonColor(sender)
         self.cfLine, steps, freq_plus, freq_minus = self._freq_controls(self.cfLine)
-        self.grid.addWidget(self.cfLine, self.cf_y, 2, 1, 2)		
-        self.grid.addWidget(steps, self.adj_y, 2, 1, 2)
+        self.grid.addWidget(self.cfLine, self.cf_y, 2, 1, 1)		
+        self.grid.addWidget(steps, self.adj_y, 2, 1, 1)
         self.grid.addWidget(freq_minus, self.adj_y, 1, 1, 1)
-        self.grid.addWidget(freq_plus, self.adj_y, 4, 1, 1)
-		
+        self.grid.addWidget(freq_plus, self.adj_y, 3, 1, 1)
+
     def _startFreq_control(self):
         startFreqButton = QtGui.QPushButton('Start Freq')
+        startFreqButton.setStyleSheet('QPushButton {max-width: 9em}')
+        self.startFreqButton = startFreqButton
         startFreqButton.clicked.connect(self.startFreqButtonClicked)
         return startFreqButton
 
     def startFreqButtonClicked(self):
+        self.setOriginalButtons()
+        sender = self.sender()
+        self.setButtonColor(sender)
         self.startFrqLine, steps, freq_plus, freq_minus = self._freq_controls(self.startFrqLine)
-        self.grid.addWidget(self.startFrqLine, self.start_y, 2, 1, 2)		
-        self.grid.addWidget(steps, self.adj_y, 2, 1, 2)
+        self.grid.addWidget(self.startFrqLine, self.start_y, 2, 1, 1)		
+        self.grid.addWidget(steps, self.adj_y, 2, 1, 1)
         self.grid.addWidget(freq_minus, self.adj_y, 1, 1, 1)
-        self.grid.addWidget(freq_plus, self.adj_y, 4, 1, 1)
+        self.grid.addWidget(freq_plus, self.adj_y, 3, 1, 1)
 
     def _stopFreq_control(self):
         stopFreqButton = QtGui.QPushButton('Stop Freq')
+        stopFreqButton.setStyleSheet('QPushButton {max-width: 9em}')
+        self.stopFreqButton = stopFreqButton
         stopFreqButton.clicked.connect(self.stopFreqButtonClicked)		
         return stopFreqButton
 
     def stopFreqButtonClicked(self):
+        self.setOriginalButtons()
+        sender = self.sender()
+        self.setButtonColor(sender)
         self.stopFrqLine, steps, freq_plus, freq_minus = self._freq_controls(self.stopFrqLine)
-        self.grid.addWidget(self.stopFrqLine, self.stop_y, 2, 1, 2)		
-        self.grid.addWidget(steps, self.adj_y, 2, 1, 2)
+        self.grid.addWidget(self.stopFrqLine, self.stop_y, 2, 1, 1)
+        self.grid.addWidget(steps, self.adj_y, 2, 1, 1)
         self.grid.addWidget(freq_minus, self.adj_y, 1, 1, 1)
-        self.grid.addWidget(freq_plus, self.adj_y, 4, 1, 1)
+        self.grid.addWidget(freq_plus, self.adj_y, 3, 1, 1)
 
     def _rbw_control(self):
 #        decimation_values = [1] + [2 ** x for x in range(2, 10)]
@@ -355,6 +407,7 @@ class MainPanel(QtGui.QWidget):
 #            span.addItem("Span: %s" % frequency_text(DEVICE_FULL_SPAN / d))
 #        span.setCurrentIndex(decimation_values.index(self.dut.decimation()))
         rbw = QtGui.QComboBox(self)
+        rbw.setStyleSheet('QComboBox {max-width: 9em}')
         points_values = [2 ** x for x in range(8, 16)]
         rbw.addItems([str(p) for p in points_values])
         def build_rbw():
@@ -412,6 +465,7 @@ class MainPanel(QtGui.QWidget):
 
     def _vbw_control(self):
         vbw = QtGui.QComboBox(self)
+        vbw.setStyleSheet('QComboBox {max-width: 9em}')
         avg_packets = [2 ** x for x in range(0, 7)]
         vbw.addItems([str(p) for p in avg_packets])
         def build_vbw():
@@ -446,11 +500,12 @@ class MainPanel(QtGui.QWidget):
         return avg
 
     def _frequency_adjust_title(self):
-        s = "──────────── FREQUENCY ADJUST ────────────"
+        s = "───────────── FREQUENCY ADJUST ──────────────"
         s_html = "<font color=black size=3> {} </font>".format(s)
         label = QtGui.QLabel(s_html)
         return label
         steps = QtGui.QComboBox(self)
+        steps.setStyleSheet('QComboBox {max-width: 9em}')
         steps.addItem("Adjust: 1 MHz")
         steps.addItem("Adjust: 2.5 MHz")
         steps.addItem("Adjust: 10 MHz")
@@ -576,7 +631,7 @@ class MainPanel(QtGui.QWidget):
                 self.stopFrqLine.setText("%0.1f" % self.stopFrq)
                 self.saveStartStop()
             elif (freq == self.startFrqLine or freq == self.stopFrqLine):
-                self.span = self.stopFrq - self.startFrq
+                self.span = float(self.stopFrq - self.startFrq)
                 self.spanLine.setText("%0.1f" % self.span)
                 self.centerFrq = self.startFrq + self.span/2
                 self.cfLine.setText("%0.1f" % self.centerFrq)
@@ -631,8 +686,10 @@ class MainPanel(QtGui.QWidget):
             freq.setText("%0.1f" % (f + delta))
             write_freq()
         freq_minus = QtGui.QPushButton('-')
+        freq_minus.setStyleSheet('QPushButton {max-width: 9em}')
         freq_minus.clicked.connect(lambda: freq_step(-1))
         freq_plus = QtGui.QPushButton('+')
+        freq_minus.setStyleSheet('QPushButton {min-width: 9em}')
         freq_plus.clicked.connect(lambda: freq_step(1))
 
         return freq, steps, freq_plus, freq_minus
@@ -646,7 +703,7 @@ class MainPanel(QtGui.QWidget):
         self.startFrqLine.setText("%0.1f" % self.startFrq)
         self.stopFrq = self.savedHalfStopFrq
         self.stopFrqLine.setText("%0.1f" % self.stopFrq)
-    
+
     def restorefullBand(self):
         self.centerFrq = self.savedFullCF
         self.cfLine.setText("%0.1f" % self.centerFrq)
@@ -663,7 +720,7 @@ class MainPanel(QtGui.QWidget):
         else:
             self.span = self.savedFullSpan
         self.spanLine.setText("%0.1f" % self.span)
-        
+
     def restoreCF(self):        
         if (self.band == HALFBAND):
             self.centerFrq = self.savedHalfCF
@@ -704,7 +761,7 @@ class MainPanel(QtGui.QWidget):
             self.savedFullStopFrq = self.stopFrq
         self.stopFrqLine.setText("%0.1f" % self.stopFrq)
         self.startFrqLine.setText("%0.1f" % self.startFrq)
-            
+
     def lowBandSpan(self):
         if (self.band == HALFBAND):
             delta = self.band
@@ -791,7 +848,8 @@ class MainPanel(QtGui.QWidget):
                     spanData,
                     self.centerFrq*1e6,
                     self.span,
-                    self.decimation_factor)
+                    self.decimation_factor,
+                    self.peakFindActive)
             else:
                 # Average data from N packets:
                 if ((self.vbw_changed == True) and (self.count == 0)):
@@ -804,7 +862,8 @@ class MainPanel(QtGui.QWidget):
                         spanData,
                         self.centerFrq*1e6,
                         self.span,
-                        self.decimation_factor)
+                        self.decimation_factor,
+                        self.peakFindActive)
         else:
             while (reflevel == None):
                 data, reflevel, start, stop, rem, stid = read_data_and_reflevel_sweep(
@@ -840,8 +899,9 @@ class MainPanel(QtGui.QWidget):
                         self.spanBuf,
                         self.centerFrq*1e6,
                         self.span,
-                        self.decimation_factor)
-        
+                        self.decimation_factor,
+                        self.peakFindActive)
+
     def average_fft(self, data, ref):
         arrayData = []
         if self.avgType == "Pwr Avg":
@@ -876,7 +936,7 @@ class MainPanel(QtGui.QWidget):
             # Remove second half of data set plus stopband frequencies
             data = data[firstIndex-1:halfIndex-1]
         return data
-					
+
     def select_samples_sweep(self, data, start, stop, step, rem):
         """
         
@@ -896,10 +956,10 @@ class MainPanel(QtGui.QWidget):
         N = len(data)     # Get array length (number of samples in data array)
         halfIndex = int(N/2)   # Get half array index
         # Calculate ratio of step against maximum bandwidth
-        ratio = step*1e6/DEVICE_FULL_SPAN    # 0.8 (100 MHz) or 0.36 (45 Mhz)
+        ratio = float(step*1e6/DEVICE_FULL_SPAN)    # 0.8 (100 MHz) or 0.36 (45 Mhz)
         # Calculate indexes of passband frequencies
-        firstIndex = int(N * ((1 - ratio)/2))
-        lastIndex = int(N * (1 - (1 - ratio)/2))
+        firstIndex = int(N * (float(1 - ratio)/2))
+        lastIndex = int(N * (1 - float((1 - ratio)/2)))
         # Handling for 100 MHz step
         if (step == FULLBAND):
             if stop == False:        
@@ -907,8 +967,8 @@ class MainPanel(QtGui.QWidget):
                 data = data[firstIndex:lastIndex]
             else:
                 # Last index depends on stop frequency
-                remIndex = int(N * rem/DEVICE_FULL_SPAN)
-                data = data[firstIndex:remIndex]
+                remIndex = int(N * float(rem/DEVICE_FULL_SPAN))
+                data = data[firstIndex:firstIndex+remIndex]
         elif (step == HALFBAND):
             firstIndex = halfIndex - int(N * ratio)
             # Use only upper half of bandwidth
@@ -964,7 +1024,7 @@ class MainPanel(QtGui.QWidget):
             if (f <= MIN_SWEEP_45):     
                 self.center_freq = f * 1e6   # Adjust CF for low band
             else:
-                self.center_freq = (f + self.span/2) * 1e6
+                self.center_freq = float(f + self.span/2) * 1e6
         self.dut.freq(self.center_freq)
 
     def get_decimation(self):

@@ -1,6 +1,8 @@
 import numpy
 import itertools
 from PySide import QtGui, QtCore
+from pyrf.util import peakdetect
+
 
 TOP_MARGIN = 20
 RIGHT_MARGIN = 20
@@ -18,10 +20,10 @@ class SpectrumView(QtGui.QWidget):
     """
 
 
-    def __init__(self, powdata, center_freq, span, decimation_factor):
+    def __init__(self, powdata, center_freq, span, decimation_factor, state):
         super(SpectrumView, self).__init__()
 
-        self.plot = SpectrumViewPlot(powdata, center_freq, span, decimation_factor)
+        self.plot = SpectrumViewPlot(powdata, center_freq, span, decimation_factor, state)
         self.left = SpectrumViewLeftAxis()
         self.bottom = SpectrumViewBottomAxis()
 
@@ -42,16 +44,12 @@ class SpectrumView(QtGui.QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         self.setLayout(grid)
 
-
-    def update_data(self, powdata, center_freq, span, decimation_factor):
+    def update_data(self, powdata, center_freq, span, decimation_factor, state):
 
         if (self.plot.center_freq, self.plot.span, self.plot.decimation_factor) != (
-
                 center_freq, span, decimation_factor):
-
             self.bottom.update_params(center_freq, span, decimation_factor)
-
-        self.plot.update_data(powdata, center_freq, span, decimation_factor)
+        self.plot.update_data(powdata, center_freq, span, decimation_factor, state)
 
 def dBm_labels(height):
     """
@@ -103,14 +101,10 @@ def MHz_labels(width, center_freq, span, decimation_factor):
     is a value between 0 (left) and width (right).
     """
     df = float(decimation_factor)
-    # simple, fixed implementation for now
-
+    span = float(span)
     offsets = (-2*(span/5), -(span/5), 0, (span/5), 2*(span/5))
-
     freq_labels = [str(center_freq / 1e6 + d/df) for d in offsets]
-
-
-    x_values = [(d + span/2) * width / span for d in offsets]
+    x_values = [(d + span/2) * (width / span) for d in offsets]
     return zip(x_values, freq_labels)
 
 class SpectrumViewBottomAxis(QtGui.QWidget):
@@ -160,19 +154,20 @@ class SpectrumViewPlot(QtGui.QWidget):
     The data plot of a spectrum view
     """
 
-    def __init__(self, powdata, center_freq, span, decimation_factor):
+    def __init__(self, powdata, center_freq, span, decimation_factor, state):
         super(SpectrumViewPlot, self).__init__()
         self.powdata = powdata
         self.center_freq = center_freq
         self.span = span
         self.decimation_factor = decimation_factor
+        self.peakState = state
 
-
-    def update_data(self, powdata, center_freq, span, decimation_factor):
+    def update_data(self, powdata, center_freq, span, decimation_factor, state):
         self.powdata = powdata
         self.center_freq = center_freq
         self.span = span
         self.decimation_factor = decimation_factor
+        self.peakState = state
         self.update()
 
     def paintEvent(self, e):
@@ -219,3 +214,28 @@ class SpectrumViewPlot(QtGui.QWidget):
             for x,y in points:
                 path.lineTo(x, y)
             qp.drawPath(path)
+
+            if (self.peakState == True):
+                # Display Peak Find values
+                _max, _min = peakdetect(self.powdata, None, 5, 50)
+                xm = [p[0] for p in _max]
+                ym = [p[1] for p in _max]                
+                qp.setPen(QtCore.Qt.red)
+                if (xm != []):
+                    maxY = numpy.amax(ym)
+                    maxX = numpy.nonzero(self.powdata == maxY)[0][0]
+                    pmaxY = height - 1 - (maxY - DBM_BOTTOM) * (
+                    float(height - TOP_MARGIN) / (DBM_TOP - DBM_BOTTOM))
+                    pmaxX = float(maxX/float(len(x_values))) * (width - 1 - RIGHT_MARGIN)
+                    qp.drawRect(pmaxX, pmaxY, 5, 5)
+                    # Calculate frequency
+                    deltaFrq = float(maxX/float(len(x_values))) * float(self.span)
+                    startF = self.center_freq/1e6 - float(self.span/2)
+                    peakFrq = (startF + deltaFrq)*1e6
+                    peakText = "Peak: %0.6s" % (maxY)
+                    frqText = "Freq: %0.7s" % (peakFrq)
+                    qp.drawText(200, 18, peakText)
+                    qp.drawText(200, 35, frqText)
+            qp.setPen(QtCore.Qt.yellow)
+            qp.drawText(320, 18, "CF %0.7s" % self.center_freq)
+            qp.drawText(320, 35, "Span %0.7s" % self.span)

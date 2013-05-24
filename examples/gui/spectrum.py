@@ -20,13 +20,12 @@ class SpectrumView(QtGui.QWidget):
     """
 
 
-    def __init__(self, powdata, center_freq, span, decimation_factor, state):
+    def __init__(self, powdata, maxdata, center_freq, span, decimation_factor, enable, find, maxHold, mrk1, mrk2):
         super(SpectrumView, self).__init__()
 
-        self.plot = SpectrumViewPlot(powdata, center_freq, span, decimation_factor, state)
+        self.plot = SpectrumViewPlot(powdata, maxdata,center_freq, span, decimation_factor, enable, find, maxHold, mrk1, mrk2)
         self.left = SpectrumViewLeftAxis()
         self.bottom = SpectrumViewBottomAxis()
-
         self.bottom.update_params(center_freq, span, decimation_factor)
         self.initUI()
 
@@ -44,12 +43,12 @@ class SpectrumView(QtGui.QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         self.setLayout(grid)
 
-    def update_data(self, powdata, center_freq, span, decimation_factor, state):
+    def update_data(self, powdata, maxdata, center_freq, span, decimation_factor, enable, find, maxHold, mrk1, mrk2):
 
         if (self.plot.center_freq, self.plot.span, self.plot.decimation_factor) != (
                 center_freq, span, decimation_factor):
             self.bottom.update_params(center_freq, span, decimation_factor)
-        self.plot.update_data(powdata, center_freq, span, decimation_factor, state)
+        self.plot.update_data(powdata, maxdata, center_freq, span, decimation_factor, enable, find, maxHold, mrk1, mrk2)
 
 def dBm_labels(height):
     """
@@ -154,20 +153,39 @@ class SpectrumViewPlot(QtGui.QWidget):
     The data plot of a spectrum view
     """
 
-    def __init__(self, powdata, center_freq, span, decimation_factor, state):
+    def __init__(self, powdata, maxdata, center_freq, span, decimation_factor, enable, find, maxHold, mrk1, mrk2):
         super(SpectrumViewPlot, self).__init__()
         self.powdata = powdata
+        self.maxdata = maxdata
         self.center_freq = center_freq
         self.span = span
         self.decimation_factor = decimation_factor
-        self.peakState = state
+        self.peakEnable = enable
+        self.peakFind = find
+        self.peakText = " "
+        self.frqText = " "
+        self.pmaxX = 0
+        self.pmaxY = 0
+        self.maxHold = maxHold
+        self.currentPos = (0, 0)
+        self.x1Click = 0
+        self.y1Click = 0
+        self.x2Click = 0
+        self.y2Click = 0
+        self.marker1 = mrk1
+        self.marker2 = mrk2
 
-    def update_data(self, powdata, center_freq, span, decimation_factor, state):
+    def update_data(self, powdata, maxdata, center_freq, span, decimation_factor, enable, find, maxHold, mrk1, mrk2):
         self.powdata = powdata
+        self.maxdata = maxdata
         self.center_freq = center_freq
         self.span = span
         self.decimation_factor = decimation_factor
-        self.peakState = state
+        self.peakEnable = enable
+        self.peakFind = find
+        self.maxHold = maxHold
+        self.marker1 = mrk1
+        self.marker2 = mrk2
         self.update()
 
     def paintEvent(self, e):
@@ -175,6 +193,28 @@ class SpectrumViewPlot(QtGui.QWidget):
         qp.begin(self)
         self.drawLines(qp)
         qp.end()
+
+    def mousePressEvent(self, ev):
+        self.currentPos=QtCore.QPoint(ev.pos())
+        if (self.marker1 == True and self.marker2 == True):
+            # Rotate between the 2 markers
+            if (self.lastMarker == 1):
+                self.x2Click = self.currentPos.x()
+                self.y2Click = self.currentPos.y()
+                self.lastMarker = 2
+            else:
+                self.x1Click = self.currentPos.x()
+                self.y1Click = self.currentPos.y()
+                self.lastMarker = 1
+        elif (self.marker1 == True):
+            self.x1Click = self.currentPos.x()
+            self.y1Click = self.currentPos.y()
+            self.lastMarker = 1
+        elif (self.marker2 == True):
+            self.x2Click = self.currentPos.x()
+            self.y2Click = self.currentPos.y()
+            self.lastMarker = 2
+        return self.currentPos
 
     def drawLines(self, qp):
         size = self.size()
@@ -215,27 +255,85 @@ class SpectrumViewPlot(QtGui.QWidget):
                 path.lineTo(x, y)
             qp.drawPath(path)
 
-            if (self.peakState == True):
-                # Display Peak Find values
-                _max, _min = peakdetect(self.powdata, None, 5, 50)
-                xm = [p[0] for p in _max]
-                ym = [p[1] for p in _max]                
+            if (self.peakEnable == True):
+                # Display Peak Find value
                 qp.setPen(QtCore.Qt.red)
-                if (xm != []):
-                    maxY = numpy.amax(ym)
-                    maxX = numpy.nonzero(self.powdata == maxY)[0][0]
-                    pmaxY = height - 1 - (maxY - DBM_BOTTOM) * (
+                if (self.peakFind == True):
+                    _max, _min = peakdetect(self.powdata, None, 5, 10)
+                    xm = [p[0] for p in _max]
+                    ym = [p[1] for p in _max]                
+                    if (xm != []):
+                        maxY = numpy.amax(ym)
+                        maxX = numpy.nonzero(self.powdata == maxY)[0][0]
+                        self.pmaxY = height - 1 - (maxY - DBM_BOTTOM) * (
+                            float(height - TOP_MARGIN) / (DBM_TOP - DBM_BOTTOM))
+                        self.pmaxX = float(maxX/float(len(x_values))) * (width - 1 - RIGHT_MARGIN)
+                        # Calculate frequency
+                        deltaFrq = float(maxX/float(len(x_values))) * float(self.span)
+                        startF = self.center_freq/1e6 - float(self.span/2)
+                        peakFrq = (startF + deltaFrq)*1e6
+                        self.peakText = "Peak: %0.6s" % (maxY)
+                        self.frqText = "Freq: %0.7s" % (peakFrq)
+                # Display last peak value found
+                qp.drawRect(self.pmaxX, self.pmaxY, 5, 5)
+                qp.drawText(220, 18, self.peakText)
+                qp.drawText(220, 35, self.frqText)
+            else:
+                self.pmaxX = 0
+                self.pmaxY = 0
+                self.peakText = " "
+                self.frqText = " "
+
+            if (self.maxHold == True):
+                # Display Max Hold plot
+                qp.setPen(QtCore.Qt.blue)
+                hold_y_values = height - 1 - (self.maxdata - DBM_BOTTOM) * (
                     float(height - TOP_MARGIN) / (DBM_TOP - DBM_BOTTOM))
-                    pmaxX = float(maxX/float(len(x_values))) * (width - 1 - RIGHT_MARGIN)
-                    qp.drawRect(pmaxX, pmaxY, 5, 5)
-                    # Calculate frequency
-                    deltaFrq = float(maxX/float(len(x_values))) * float(self.span)
-                    startF = self.center_freq/1e6 - float(self.span/2)
-                    peakFrq = (startF + deltaFrq)*1e6
-                    peakText = "Peak: %0.6s" % (maxY)
-                    frqText = "Freq: %0.7s" % (peakFrq)
-                    qp.drawText(200, 18, peakText)
-                    qp.drawText(200, 35, frqText)
+                hold_x_values = numpy.linspace(0, width - 1 - RIGHT_MARGIN,
+                    len(self.maxdata))
+                path = QtGui.QPainterPath()
+                points = itertools.izip(hold_x_values, hold_y_values)
+                path.moveTo(*next(points))
+                for x,y in points:
+                    path.lineTo(x, y)
+                qp.drawPath(path)
+                    
             qp.setPen(QtCore.Qt.yellow)
-            qp.drawText(320, 18, "CF %0.7s" % self.center_freq)
-            qp.drawText(320, 35, "Span %0.7s" % self.span)
+            qp.drawText(320, 18, "CF: %0.7s" % self.center_freq)
+            qp.drawText(320, 35, "Span: %0.7s" % self.span)
+
+            if (self.marker1 == True):
+                qp.setPen(QtGui.QColor('#FF9900'))
+                qp.drawRect(self.x1Click, self.y1Click, 3, 3)
+                y1 = -(((self.y1Click - height + 1) / 
+                    (float(height - TOP_MARGIN) / (DBM_TOP - DBM_BOTTOM))) - DBM_BOTTOM)
+                x1 = float(self.x1Click /float(width - 1 - RIGHT_MARGIN))
+                # Calculate frequency
+                delta = float(x1 * float(self.span))
+                start = self.center_freq/1e6 - float(self.span/2)
+                marker1Frq = (start + delta)*1e6
+                marker1Text = "Mrk 1: %0.6s" % (y1)
+                frq1Text = "Freq: %0.7s" % (marker1Frq)
+                qp.drawText(25, 18, marker1Text)
+                qp.drawText(25, 35, frq1Text)
+            else:
+                self.x1Click = 0
+                self.y1Click = 0
+
+            if (self.marker2 == True):
+                qp.setPen(QtGui.QColor('#CC0099'))
+                qp.drawRect(self.x2Click, self.y2Click, 3, 3)
+                y2 = -(((self.y2Click - height + 1) / 
+                    (float(height - TOP_MARGIN) / (DBM_TOP - DBM_BOTTOM))) - DBM_BOTTOM)
+                x2 = float(self.x2Click /float(width - 1 - RIGHT_MARGIN))
+                # Calculate frequency
+                delta = float(x2 * float(self.span))
+                start = self.center_freq/1e6 - float(self.span/2)
+                marker2Frq = (start + delta)*1e6
+                marker2Text = "Mrk 2: %0.6s" % (y2)
+                frq2Text = "Freq: %0.7s" % (marker2Frq)
+                qp.drawText(120, 18, marker2Text)
+                qp.drawText(120, 35, frq2Text)
+            else:
+                self.x2Click = 0
+                self.y2Click = 0

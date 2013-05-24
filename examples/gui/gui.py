@@ -129,14 +129,24 @@ class MainPanel(QtGui.QWidget):
         self.savedHalfStartFrq = DEFAULT_FREQ - float(HALFBAND/2)
         self.savedFullStopFrq = DEFAULT_FREQ + FULLBAND/2
         self.savedHalfStopFrq = DEFAULT_FREQ + float(HALFBAND/2)
-        self.peakFindActive = False
+        self.peakEnable = False
+        self.peakFind = False
+        self.maxHold = []
+        self.maxHoldActive = False
+        self.marker1Active = False
+        self.marker2Active = False
         data, reflevel = read_data_and_reflevel(dut)
         self.screen = SpectrumView(
             compute_fft(dut, data, reflevel),
+            [],
             self.center_freq,
             DEVICE_FULL_SPAN/1e6,
             self.decimation_factor,
-            False)
+            self.peakEnable,
+            self.peakFind,
+            self.maxHoldActive,
+            self.marker1Active,
+            self.marker2Active)
         self.initUI()
 
     def initUI(self):
@@ -149,12 +159,18 @@ class MainPanel(QtGui.QWidget):
         grid.addWidget(self._radio_title(), y, 1, 1, 3)
         y += 1
         grid.addWidget(self._antenna_control(), y, 1, 1, 1)
-        grid.addWidget(self._peak_find_control(), y, 2, 1, 1)
         grid.addWidget(self._bpf_control(), y, 3, 1, 2)
         y += 1
         grid.addWidget(self._gain_control(), y, 1, 1, 1)
         grid.addWidget(QtGui.QLabel('                          IF Gain:'), y, 2, 1, 1)
         grid.addWidget(self._ifgain_control(), y, 3, 1, 1)
+        y += 1
+        grid.addWidget(self._max_hold_control(), y, 1, 1, 1)
+        grid.addWidget(self._peak_enable_control(), y, 2, 1, 1)
+        grid.addWidget(self._peak_find_control(), y, 3, 1, 1)
+        y += 1
+        grid.addWidget(self._marker_1_control(), y, 1, 1, 1)
+        grid.addWidget(self._marker_2_control(), y, 2, 1, 1)
         y += 1
         grid.addWidget(self._frequency_title(), y, 1, 1, 3)
         y += 1
@@ -250,6 +266,20 @@ class MainPanel(QtGui.QWidget):
         antenna.currentIndexChanged.connect(new_antenna)
         return antenna
 
+    def _peak_enable_control(self):
+        peakEnableButton = QtGui.QPushButton('Peak Enable')
+        peakEnableButton.clicked.connect(self.peakEnableButtonClicked)
+        self.peakEnableButton = peakEnableButton
+        return peakEnableButton
+
+    def peakEnableButtonClicked(self):
+        if (self.peakEnable == False):
+            self.peakEnable = True
+            self.peakEnableButton.setStyleSheet('QPushButton {background-color: #FF3333 ; border-style: outset; border-width: 2px; border-radius: 4px; max-width: 9em; padding: 3px;}')
+        else:
+            self.peakEnable = False
+            self.peakEnableButton.setStyleSheet('QPushButton')
+
     def _peak_find_control(self):
         peakButton = QtGui.QPushButton('Peak Find')
         peakButton.clicked.connect(self.peakFindButtonClicked)
@@ -257,12 +287,50 @@ class MainPanel(QtGui.QWidget):
         return peakButton
 
     def peakFindButtonClicked(self):
-        if (self.peakFindActive == False):
-            self.peakFindActive = True
-            self.peakButton.setStyleSheet('QPushButton {background-color: #FF3333 ; border-style: outset; border-width: 2px; border-radius: 4px; max-width: 9em; padding: 3px;}')
+        if (self.peakEnable == True):
+            self.peakFind = True
+
+    def _max_hold_control(self):
+        maxHoldButton = QtGui.QPushButton('Max Hold')
+        maxHoldButton.clicked.connect(self.maxHoldButtonClicked)
+        self.maxHoldButton = maxHoldButton
+        return maxHoldButton
+
+    def maxHoldButtonClicked(self):
+        if (self.maxHoldActive == False):
+            self.maxHoldActive = True
+            self.maxHoldButton.setStyleSheet('QPushButton {background-color: #0099FF ; border-style: outset; border-width: 2px; border-radius: 4px; max-width: 9em; padding: 3px;}')
         else:
-            self.peakFindActive = False
-            self.peakButton.setStyleSheet('QPushButton')
+            self.maxHoldActive = False
+            self.maxHoldButton.setStyleSheet('QPushButton')
+
+    def _marker_1_control(self):
+        marker1Button = QtGui.QPushButton('Marker 1')
+        marker1Button.clicked.connect(self.marker1ButtonClicked)
+        self.marker1Button = marker1Button
+        return marker1Button
+
+    def marker1ButtonClicked(self):
+        if (self.marker1Active == False):
+            self.marker1Active = True
+            self.marker1Button.setStyleSheet('QPushButton {background-color: #FF9900 ; border-style: outset; border-width: 2px; border-radius: 4px; max-width: 9em; padding: 3px;}')
+        else:
+            self.marker1Active = False
+            self.marker1Button.setStyleSheet('QPushButton')
+
+    def _marker_2_control(self):
+        marker2Button = QtGui.QPushButton('Marker 2')
+        marker2Button.clicked.connect(self.marker2ButtonClicked)
+        self.marker2Button = marker2Button
+        return marker2Button
+
+    def marker2ButtonClicked(self):
+        if (self.marker2Active == False):
+            self.marker2Active = True
+            self.marker2Button.setStyleSheet('QPushButton {background-color: #CC0099 ; border-style: outset; border-width: 2px; border-radius: 4px; max-width: 9em; padding: 3px;}')
+        else:
+            self.marker2Active = False
+            self.marker2Button.setStyleSheet('QPushButton')
 
     def _bpf_control(self):
         bpf = QtGui.QComboBox(self)
@@ -441,6 +509,7 @@ class MainPanel(QtGui.QWidget):
             else:
                 self.points = points_values[rbw.currentIndex()]
                 self.decimation_points = self.decimation_factor * self.points
+            self.maxHold = []
         rbw.setCurrentIndex(points_values.index(1024))
         new_rbw()
         rbw.currentIndexChanged.connect(new_rbw)
@@ -459,6 +528,7 @@ class MainPanel(QtGui.QWidget):
                 self.restorefullBand()
             self.set_mode_from_span()
             self.set_freq_mhz(self.centerFrq)
+            self.maxHold = []
         new_band()
         band.currentIndexChanged.connect(new_band)
         return band
@@ -480,6 +550,7 @@ class MainPanel(QtGui.QWidget):
         def new_vbw():
             self.packets = avg_packets[vbw.currentIndex()]
             self.vbw_changed = True
+            self.maxHold = []
 #            self.decimation_points = self.decimation_factor * self.points
         vbw.setCurrentIndex(avg_packets.index(2**0))
         new_vbw()
@@ -751,6 +822,7 @@ class MainPanel(QtGui.QWidget):
             self.savedFullCF = self.centerFrq
         self.spanLine.setText("%0.1f" % self.span)
         self.cfLine.setText("%0.1f" % self.centerFrq)
+        self.maxHold = []
 
     def saveStartStop(self):
         if (self.band == HALFBAND):
@@ -814,6 +886,7 @@ class MainPanel(QtGui.QWidget):
             self.dut.system_flush()
             self.dut.sweep_start()
             self.spanBuf = []
+            self.maxHold = []
             # Hide VBW/AVG combo boxes
             self.vbw.hide()
             self.avg.hide()
@@ -826,6 +899,7 @@ class MainPanel(QtGui.QWidget):
             self.dut.sweep_stop()
             self.count = 0
             self.spanBuf = []
+            self.maxHold = []
             self.dut.flush_captures()    # Flush old data
             self.dut.system_flush()
             self.set_freq_mhz(self.centerFrq)
@@ -844,12 +918,25 @@ class MainPanel(QtGui.QWidget):
             if (self.centerFrq < lowLimit):
                 arrayData = compute_fft_i_only(self.dut, data, reflevel)
                 spanData = self.select_samples_low_band(arrayData)
+                if (self.maxHoldActive == True):
+                    if (self.maxHold == []):
+                        self.maxHold = spanData
+                    self.maxHold = numpy.maximum(self.maxHold, spanData)
+                else:
+                    self.maxHold = []
                 self.screen.update_data(
                     spanData,
+                    self.maxHold,
                     self.centerFrq*1e6,
                     self.span,
                     self.decimation_factor,
-                    self.peakFindActive)
+                    self.peakEnable,
+                    self.peakFind,
+                    self.maxHoldActive,
+                    self.marker1Active,
+                    self.marker2Active)
+                if (self.peakFind == True):
+                    self.peakFind = False
             else:
                 # Average data from N packets:
                 if ((self.vbw_changed == True) and (self.count == 0)):
@@ -858,12 +945,25 @@ class MainPanel(QtGui.QWidget):
                 arrayData = self.average_fft(data, reflevel)
                 if (arrayData != []):
                     spanData = self.select_samples_trace(arrayData, self.band)
+                    if (self.maxHoldActive == True):
+                        if (self.maxHold == []):
+                            self.maxHold = spanData
+                        self.maxHold = numpy.maximum(self.maxHold, spanData)
+                    else:
+                        self.maxHold = []
                     self.screen.update_data(
                         spanData,
+                        self.maxHold,
                         self.centerFrq*1e6,
                         self.span,
                         self.decimation_factor,
-                        self.peakFindActive)
+                        self.peakEnable,
+                        self.peakFind,
+                        self.maxHoldActive,
+                        self.marker1Active,
+                        self.marker2Active)
+                    if (self.peakFind == True):
+                        self.peakFind = False
         else:
             while (reflevel == None):
                 data, reflevel, start, stop, rem, stid = read_data_and_reflevel_sweep(
@@ -894,13 +994,26 @@ class MainPanel(QtGui.QWidget):
             self.spanBuf = concatenate([self.spanBuf, stepData])
             if  stop == True:
                 stop = False
-                if self.suspendView == False:                        
+                if self.suspendView == False:
+                    if (self.maxHoldActive == True):
+                        if (self.maxHold == []):
+                            self.maxHold = self.spanBuf
+                        self.maxHold = numpy.maximum(self.maxHold, self.spanBuf)
+                    else:
+                        self.maxHold = []
                     self.screen.update_data(
                         self.spanBuf,
+                        self.maxHold,
                         self.centerFrq*1e6,
                         self.span,
                         self.decimation_factor,
-                        self.peakFindActive)
+                        self.peakEnable,
+                        self.peakFind,
+                        self.maxHoldActive,
+                        self.marker1Active,
+                        self.marker2Active)
+                    if (self.peakFind == True):
+                        self.peakFind = False
 
     def average_fft(self, data, ref):
         arrayData = []
